@@ -1,0 +1,98 @@
+#!/data/EM/venv3.9/bin/python
+from numpy import exp, array, zeros, ones, dot, set_printoptions, log, argmax, clip, sqrt, asarray, multiply, abs, max, fill_diagonal, quantile, copy, int32, reshape, fromfile, uint32, ndarray
+from scipy.sparse import load_npz, save_npz, lil_matrix, csr_matrix, csc_matrix, coo_matrix, diags
+import warnings
+import sentencepiece as spm
+from banks import bankLags, relativeLags, MaxLag, MaxBankLength, strRelativeLag, bankLengths
+import argparse
+from multiprocessing import Pool
+from collections import Counter
+import shelve
+warnings.filterwarnings("ignore", message="Changing the sparsity structure of a csr_matrix is expensive.")
+warnings.filterwarnings("ignore", message="divide by zero encountered")
+warnings.filterwarnings("ignore", message="DeprecationWarning")
+
+epsilon = 0.000001
+
+def count(lag):
+    toks = fromfile(args.corpus+"/corpus.tok", dtype=uint32)
+    bigrams = Counter(zip(toks, toks[lag:]))
+    i, j, c = zip(*[(k1, k2, bigrams[(k1, k2)]) for k1, k2 in bigrams])
+    C = coo_matrix((c, (i, j)), shape=(V, V))
+    Cij = C.tocsr()
+    #save_npz(f"{args.corpus}/lag{lag}.npz", Cij)
+    if args.verbose: print (f"counting lag {lag} - complete", flush=True)
+    return (Cij)
+
+def getCounts():
+    global Ci, M, Lij
+    if args.verbose: print ("Getting count matrices ... ", flush=True)
+
+    # load lag counts
+
+    with Pool(args.numcpus) as p:
+         Lij = p.map(count, range(MaxLag+1))
+    Ci = Lij[0].diagonal()
+    M = Ci.sum()
+        
+    if args.verbose: print ("Done", flush=True)
+
+def getWij(Cij):
+    Wij = Cij.copy()
+    Wij.data = log(Wij.data + epsilon) - log(epsilon)   # ignore features that have not been seen with this class
+    return (Wij)
+    
+
+def calculateW(rlindex):
+    if args.verbose: print (f"Calculate WijRelative{strRelativeLag(relativeLags[rlindex])}", flush=True)
+    Cij = csr_matrix((V, V))
+    for i1 in relativeLags[rlindex][0]:
+        for i2 in relativeLags[rlindex][1]:
+            Cij += Lij[i2-i1] / len(relativeLags[rlindex][0]) / len(relativeLags[rlindex][1])
+    
+    s = strRelativeLag(relativeLags[rlindex])
+    save_npz(corpus+f"/C{s}", Cij)
+    save_npz(corpus+f"/C{s}T", Cij.T.tocsr())
+    
+    save_npz(corpus+f"/WijRelative{s}", getWij(Cij))
+    save_npz(corpus+f"/WijRelative{s}T", getWij(Cij.T.tocsr())) # don't thin kI need the tocsr
+    if args.verbose: print (f"Done WijRelative{strRelativeLag(relativeLags[rlindex])}", flush=True)
+
+def makeWeights():
+
+    # calculate W
+
+    if args.verbose: print ("Calculate Ws", flush = True)
+
+    with Pool(args.numcpus) as p:
+        p.map(calculateW, range(len(relativeLags)))
+
+    if args.verbose: print ("Done")
+
+    if args.verbose: print ("Calculate logCis", flush = True)
+    # tokens that were never seen should be given very high frequencies so that they will never be chosen
+    maxCi = Ci.max()
+    Ci[Ci == 0] = maxCi
+    logCi = log(Ci)
+    logCi.tofile(corpus+f"/logCi")
+    if args.verbose: print ("Done", flush=True)
+
+    if args.verbose: print ("Weights calculated and saved", flush=True)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("corpus", type=str, help="The name of the corpus to process")
+    parser.add_argument("-c", "--numcpus", type=int, help="Number of CPUs to use. Default = 40.", default=40)
+    parser.add_argument("-v", "--verbose", action="store_true", help="Display args.verbose output")
+    args = parser.parse_args()
+    corpus = args.corpus
+
+    params = shelve.open(f"{args.corpus}/params")
+    tokenizer = spm.SentencePieceProcessor(model_file=params["sentencepiece model"])
+    redevelopIndex = tokenizer.encode("redevelop")[0]
+    V = tokenizer.get_piece_size()
+    if args.verbose: print (f"vocab size = {V}")
+    Lij = [None for b in range(MaxLag+1)]
+    getCounts()
+    makeWeights()
+
