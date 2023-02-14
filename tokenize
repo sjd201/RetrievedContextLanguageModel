@@ -11,11 +11,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("corpus", nargs="?", type=str, help="The name of the corpus to tokenize. ids will be output to <corpus>/corpus.tok or <corpus>/train.tok if the -t flag is given.", default = None)
 parser.add_argument("-s", "--string", type=str, help="A string to tokenize. Output will go to stdout.", default = None)
 parser.add_argument("-t", "--trainingcorpus", action="store_true", help="Tokenize traning corpus called train. Tokens will be output to <corpus>/train.tok.")
-parser.add_argument("-m", "--modelfile", type=str, help="Model file to use. Default = large.model", default="large.model")
 parser.add_argument("-v", "--verbose", action="store_true", help="Display verbose output")
 args = parser.parse_args()
 
-sp = spm.SentencePieceProcessor(model_file=args.modelfile)
+sp = spm.SentencePieceProcessor(model_file=f"{args.corpus}/token.model")
 if args.verbose: print (f"Using sentence piece model file {args.modelfile}")
 
 def lines(filename, frm, to):
@@ -43,12 +42,12 @@ else:
     else:
         corpus = args.corpus+"/corpus"
 
-    fileLength = lenFile(corpus)
-    step = int(fileLength/80)
+    #fileLength = lenFile(corpus)
+    #step = int(fileLength/80)
     toks = []
     n = 0
-    for i in range(0, fileLength, step):
-        for line in lines(corpus, i, i+step):
+    with open(corpus, "r") as f:
+        for line in f:
             ids = sp.encode(line)
             toks.extend(ids)
             n += 1
@@ -58,6 +57,3 @@ else:
     allids.tofile(corpus+".tok")
     if args.verbose: print (f"Output tokens to file {corpus+'.tok'}")
 
-params = shelve.open(f"{args.corpus}/params")
-params["sentencepiece model"] = args.modelfile
-params.close()

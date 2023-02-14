@@ -1,0 +1,14 @@
+#!/data/EM/venv3.9/bin/python
+import argparse
+
+import sentencepiece as spm
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("corpus", type=str, help="The name of the corpus to train on. The token model will be placed in <corpus>/token.model.")
+    parser.add_argument("-V", "--vocab_size", type=int, default=2**16, help="The size of the vocabulary to create.")
+
+    args = parser.parse_args()
+
+    spm.SentencePieceTrainer.train(input=f"{args.corpus}/corpus", model_prefix = f"{args.corpus}/token", vocab_size=args.vocab_size, split_by_whitespace = False, split_by_unicode_script=False)
