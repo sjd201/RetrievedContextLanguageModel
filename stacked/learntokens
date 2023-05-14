@@ -1,0 +1,23 @@
+#!/data/EM/venv3.9/bin/python
+import argparse
+import os
+
+import sentencepiece as spm
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("corpus", type=str, help="The name of the corpus to train on. The token model will be placed in <corpus>/token.model.")
+    parser.add_argument("-V", "--vocab_size", type=int, default=2**16, help="The size of the vocabulary to create.")
+
+    args = parser.parse_args()
+    
+
+    user_defined_symbols_file = f"{args.corpus}/special_tokens.txt"
+    if os.path.exists(user_defined_symbols_file):
+        user_defined_symbols = [w[0:-1].replace(" ", "\u2581") for w in open(user_defined_symbols_file, "r").readlines()]
+    else:
+        user_defined_symbols = []
+        
+    #spm.SentencePieceTrainer.train(input=f"{args.corpus}/corpus", model_prefix = f"{args.corpus}/token", vocab_size=args.vocab_size, split_by_whitespace = False, split_by_unicode_script=False, user_defined_symbols = user_defined_symbols, character_coverage=1.0)
+    spm.SentencePieceTrainer.train(input=f"{args.corpus}/corpus", model_prefix = f"{args.corpus}/token", vocab_size=args.vocab_size, user_defined_symbols = user_defined_symbols, character_coverage=1.0)

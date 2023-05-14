@@ -1,0 +1,111 @@
+#!/data/EM/venv3.9/bin/python
+from numpy import exp, array, zeros, ones, dot, set_printoptions, log, argmax, clip, sqrt, asarray, multiply, abs, max, fill_diagonal, quantile, copy, int32, reshape, fromfile, uint32, ndarray, where, set_printoptions, arange, concatenate
+from scipy.sparse import load_npz, save_npz, lil_matrix, csr_matrix, csc_matrix, coo_matrix, diags, hstack, vstack
+import warnings
+import sentencepiece as spm
+from banks import banks # bnks.bankLags, bnks.MaxLag, bnks.MaxBankLength, bnks.NumberOfBanks
+import argparse
+from multiprocessing import Pool
+from collections import Counter
+from time import time
+from numba import njit
+from sys import getsizeof
+
+
+warnings.filterwarnings("ignore", message="Changing the sparsity structure of a csr_matrix is expensive.")
+#warnings.filterwarnings("ignore", message="divide by zero encountered in log")
+set_printoptions(linewidth=200, precision=1, edgeitems = 50)
+
+epsilon = 0.001 
+
+@njit
+def calcWeights(logLRdata, Cj, Ci, epsilon, V, N):
+    for k in range(len(logLRdata)):
+        logLRdata[k] = log(logLRdata[k]+epsilon) - log(Cj[k] + V * epsilon) - log(Ci[k]-logLRdata[k]+ (V-1) * epsilon) + log(N-Cj[k]+V*(V-1) * epsilon)
+
+def count(lag):
+    toks = fromfile(args.corpus+"/corpus.tok", dtype=uint32)
+    bigrams = Counter(zip(toks, toks[lag:]))
+    for t1, t2 in bigrams.keys():
+        if t1%V == underscore or t2%V == underscore:
+            bigrams[(t1, t2)] = 0
+    i, j, c = zip(*[(k1, k2, bigrams[(k1, k2)]) for k1, k2 in bigrams])
+    C = coo_matrix((c, (i, j)), shape=(V, V))
+    Cij = C.tocsr()
+    #save_npz(f"{args.corpus}/lag{lag}.npz", Cij)
+    if args.verbose: print (f"counting lag {lag} - complete", flush=True)
+    return (Cij)
+
+def getCounts():
+    global Ci, N, Lij
+    if args.verbose: print ("Getting count matrices ... ", flush=True)
+
+    # load lag counts
+
+    with Pool(args.numcpus) as p:
+         Lij = p.map(count, range(bnks.MaxLag+1))
+        
+    if args.verbose: print ("Done", flush=True)
+
+def strTok(tok):
+    return(f"{tokenizer.decode([int(tok%V)])}{tok//V}")
+
+def makeCij(Lij):
+
+    if args.verbose: print ("Getting Cij ... ", flush=True)
+    mytime = time()
+    Cij = {}
+    for c in bnks.connections:
+        M = coo_matrix((V, V))
+        for l1 in bnks.lags[c[0]]:
+            for l2 in bnks.lags[c[1]]:
+                if l1 < l2:
+                    lag = l2-l1
+                    M += Lij[lag]
+                else:
+                    lag = l1-l2
+                    M += Lij[lag].T
+        Cij[c] = M
+    if args.verbose: print (f"Done {time()-mytime:1.0f} seconds", flush=True)
+    C = Lij[0].diagonal()
+    print (f"C = {C}")
+    
+    return (Cij, C)
+       
+def save():
+    if args.verbose: print ("Saving Cij ... ", flush=True)
+    mytime = time()
+    for c in bnks.connections:
+        save_npz(f"{args.corpus}/{c[0]}->{c[1]}", Cij[c], compressed=False)
+    print (C.dtype)
+    C.tofile(f"{args.corpus}/C")
+    if args.verbose: print (f"Done {time()-mytime:1.0f} seconds", flush=True)
+
+def visitBanks(banks, root):
+    for branch in banks.connections[root]:
+        print (branch , root)
+        if branch in banks.connections:
+            visitBanks(banks, branch) 
+    
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("corpus", type=str, help="The name of the corpus to process")
+    parser.add_argument("-c", "--numcpus", type=int, help="Number of CPUs to use. Default = 40.", default=40)
+    parser.add_argument("-e", "--epsilon", type=float, help="Epsilon. Smoothing parameter. Default = 0.001.", default=0.001)
+
+    parser.add_argument("-v", "--verbose", action="store_true", help="Display args.verbose output")
+    args = parser.parse_args()
+    corpus = args.corpus
+    epsilon = args.epsilon
+    toks = fromfile(args.corpus+"/corpus.tok", dtype=uint32)
+    N = len(toks)
+    if args.verbose: print (f"N = {N} tokens epsilon = {epsilon}", flush=True)
+
+    bnks = banks()
+    tokenizer = spm.SentencePieceProcessor(model_file=f"{args.corpus}/token.model")
+    V = tokenizer.get_piece_size()
+    underscore = tokenizer.encode("_")[1]
+    Lij = [None for b in range(bnks.MaxLag+1)]
+    getCounts()
+    Cij, C = makeCij(Lij)
+    save()

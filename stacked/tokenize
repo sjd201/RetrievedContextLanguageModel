@@ -1,0 +1,59 @@
+#!/data/EM/venv3.9/bin/python
+
+import os
+import argparse
+from numpy import array, uint32
+import shelve
+
+import sentencepiece as spm
+
+parser = argparse.ArgumentParser()
+parser.add_argument("corpus", nargs="?", type=str, help="The name of the corpus to tokenize. ids will be output to <corpus>/corpus.tok or <corpus>/train.tok if the -t flag is given.", default = None)
+parser.add_argument("-s", "--string", type=str, help="A string to tokenize. Output will go to stdout.", default = None)
+parser.add_argument("-v", "--verbose", action="store_true", help="Display verbose output")
+parser.add_argument("-S", "--showToks", action="store_true", help="Show token lists")
+args = parser.parse_args()
+
+sp = spm.SentencePieceProcessor(model_file=f"{args.corpus}/token.model")
+zero_length_tokens = [t for t in range(sp.get_piece_size()) if len(sp.decode([t])) == 0]
+
+if args.verbose: print (f"Using sentence piece model file {args.corpus}/token.model")
+
+def lines(filename, frm, to):
+    with open(filename, "r") as f:
+        f.seek(frm)
+        if frm != 0:
+            f.readline()
+        while f.tell() < to:
+            line = f.readline()
+            if line == "":
+                break
+            yield(line)
+
+def lenFile(filename):
+    with open(filename, "r") as f:
+        f.seek(0, os.SEEK_END)
+        return (f.tell())
+
+if args.string:
+    print (sp.encode(args.string, out_type=str))
+    print (sp.encode(args.string))
+else:
+    for corpus in [f"{args.corpus}/corpus", f"{args.corpus}/train"]:
+        toks = []
+        n = 0
+        if args.verbose: print (f"Tokenizing {corpus}")
+        with open(corpus, "r") as f:
+            for line in f:
+                # sentencepiece sometimes produces zero length tokens which can be high frequency - so remove those
+                ids = [t for t in sp.encode(line) if t not in zero_length_tokens] 
+                if args.showToks:
+                    print ([sp.decode([int(id)]) for id in ids])
+                toks.extend(ids)
+                n += 1
+                if n % 10000 == 0:
+                    if args.verbose: print (f"{n} lines done.", flush = True)
+        allids = array(toks, uint32)
+        allids.tofile(corpus+".tok")
+        if args.verbose: print (f"Output tokens to file {corpus+'.tok'}")
+

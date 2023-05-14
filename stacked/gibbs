@@ -1,0 +1,48 @@
+#!/data/EM/venv3.9/bin/python
+import argparse
+from rc import RC
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("corpus", type=str, help="The name of the corpus to process")
+    parser.add_argument("-s", "--numsamples", type=int, help="Number of samples to perform when generating new items. Default = 50.", default=50)
+    parser.add_argument("-c", "--numcpus", type=int, help="Number of CPUs to use. Default = 40.", default=40)
+    parser.add_argument("-g", "--genprefix", type=str, help="Generate a long string from prefix. Default = None.", default=None)
+    parser.add_argument("-t", "--testprefix", type=str, help="Fill the buffer based on prefix. Default = None.", default=None)
+    parser.add_argument("-T", "--temperature", type=float, help="Set the temperature. Default = 0.5.", default=0.5)
+    parser.add_argument("-d", "--displayprefix", type=str, help="Show the set of results when preenting the prefix as a heatmap. Default = None.", default=None)
+    parser.add_argument("-f", "--teststringfilename", type=str, help="Take strings from file and test each one. Default = None.", default=None)
+    parser.add_argument("-v", "--verbose", action="store_true", help="Display verbose output")
+    args = parser.parse_args()
+
+    s = RC(args.corpus, verbose=args.verbose, numSamples = args.numsamples)
+    s.temperature = args.temperature
+    if args.genprefix:
+        s.loadWeights()
+        s.loadParameters()
+        s.generate(args.genprefix)
+    elif args.testprefix:
+        s.loadWeights()
+        s.loadParameters()
+        s.test(args.testprefix)
+    elif args.displayprefix:
+        s.loadWeights()
+        s.loadParameters()
+        s.displayResults(args.displayprefix, title = args.displayprefix)
+    elif args.teststringfilename:
+        s.loadWeights()
+        s.loadParameters()
+        with open(args.teststringfilename) as f:
+            teststrings = f.readlines()
+            for teststring in teststrings:
+                teststring = teststring[0:-1]
+                print (f"Test String: {teststring}", flush=True)
+                s.generate(teststring)
+                print (flush=True)
+    else:
+        #s.loadWeights()
+        #s.test("April ends on the same day of the week as _ _ _")
+        cp = "John loves Mary. _ _ _ _ _ _ _ _ _ _ _ _ Bob loves Elizabeth. _ _ _ _ _ _ _ _ _ _ _ _ Simon loves Jessica. _ _ _ _ _ _ _ _ _ _ _ _ Lance loves Ellen. _ _ _ _ _ _ _ _ _ _ _ _ Charles loves Emma. _ _ _ _ _ _ _ _ _ _ _ _ Bert loves Heather."
+        s.show(cp)
+

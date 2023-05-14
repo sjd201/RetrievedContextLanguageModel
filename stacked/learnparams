@@ -1,0 +1,28 @@
+#!/data/EM/venv3.9/bin/python
+import argparse
+from rc import RC
+#from banks import NumberOfBanks
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("corpus", type=str, help="The name of the corpus to process. Training examples will be taken from <corpus>/train.tok.")
+    parser.add_argument("-l", "--initiallearningrate", type=float, help="Initial learning rate. When logLikihood goes up learning rate will be halved and training will proceed until learning rate drops below threshold. Default = 0.00001.", default=0.00001)
+    parser.add_argument("-c", "--numcpus", type=int, help="Number of CPUs to use. Default = 40.", default=40)
+    parser.add_argument("-n", "--numsamples", type=int, help="Number of samples to train on. If the parameter is not specified all tokens in corpus/train.tok will be used.", default=None)
+    parser.add_argument("-v", "--verbose", action="store_true", help="Display verbose output")
+    parser.add_argument("-I", "--initializeparams", action="store_true", help="Initalize parameters to default values before training. Default = False")
+    args = parser.parse_args()
+
+    s = RC(args.corpus, verbose=args.verbose)
+    if not args.initializeparams:
+        s.loadParameters()
+    s.loadWeights()
+    s.NumberOfCPUs = args.numcpus
+    s.lam = args.initiallearningrate
+    s.learn(args.numsamples)
+    #if args.targetbank == -1:
+    #    s.learnParallel(range(NumberOfBanks))
+    #else:
+    #    s.learnParallel([args.targetbank])
+
